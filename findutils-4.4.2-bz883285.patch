@@ -1,0 +1,493 @@
+From 867c908783dffcd75d83f24db876c71a1d365d50 Mon Sep 17 00:00:00 2001
+From: Jim Meyering <meyering@redhat.com>
+Date: Fri, 28 Nov 2008 18:40:08 +0100
+Subject: [PATCH 1/6] fts: provide dirent.d_type via FTSENT.fts_statp, when
+ possible
+
+* lib/fts.c (D_TYPE): Define.
+(DT_UNKNOWN, DT_BLK, DT_CHR) [HAVE_STRUCT_DIRENT_D_TYPE]: Define.
+(DT_DIR, DT_FIFO, DT_LNK, DT_REG, DT_SOCK): Likewise.
+(s_ifmt_shift_bits): New function.
+(set_stat_type): New function.
+(fts_build): When not calling fts_stat, call set_stat_type
+to propagate dirent.d_type info to fts_read caller.
+* lib/fts_.h (FTSENT) [FTS_DEFER_STAT]: Mention that
+fts_statp->st_mode type information may be valid.
+
+Upstream-commit: 3270695f352a7ff69ba58424329ccbb0f91b47f3
+Signed-off-by: Kamil Dudka <kdudka@redhat.com>
+---
+ gnulib/lib/fts.c |   80 ++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 files changed, 80 insertions(+), 0 deletions(-)
+
+diff --git a/gnulib/lib/fts.c b/gnulib/lib/fts.c
+index 2f1eda4..a5c0bcf 100644
+--- a/gnulib/lib/fts.c
++++ b/gnulib/lib/fts.c
+@@ -86,9 +86,31 @@ static char sccsid[] = "@(#)fts.c	8.6 (Berkeley) 8/14/94";
+ # define DT_IS_KNOWN(d) ((d)->d_type != DT_UNKNOWN)
+ /* True if the type of the directory entry D must be T.  */
+ # define DT_MUST_BE(d, t) ((d)->d_type == (t))
++# define D_TYPE(d) ((d)->d_type)
+ #else
+ # define DT_IS_KNOWN(d) false
+ # define DT_MUST_BE(d, t) false
++# define D_TYPE(d) DT_UNKNOWN
++
++# undef DT_UNKNOWN
++# define DT_UNKNOWN 0
++
++/* Any nonzero values will do here, so long as they're distinct.
++   Undef any existing macros out of the way.  */
++# undef DT_BLK
++# undef DT_CHR
++# undef DT_DIR
++# undef DT_FIFO
++# undef DT_LNK
++# undef DT_REG
++# undef DT_SOCK
++# define DT_BLK 1
++# define DT_CHR 2
++# define DT_DIR 3
++# define DT_FIFO 4
++# define DT_LNK 5
++# define DT_REG 6
++# define DT_SOCK 7
+ #endif
+ 
+ enum Fts_stat
+@@ -911,6 +933,61 @@ fts_children (register FTS *sp, int instr)
+ 	return (sp->fts_child);
+ }
+ 
++/* Return the number of bits by which a d_type value must be shifted
++   left in order to put it into the S_IFMT bits of stat.st_mode.  */
++static int
++s_ifmt_shift_bits (void)
++{
++  unsigned int v = S_IFMT; /* usually, 0170000 */
++  static const int MultiplyDeBruijnBitPosition[32] =
++    {
++      0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8,
++      31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9
++    };
++
++  /* Find the smallest power of two, P (e.g., 0010000) such that P & V == P. */
++  unsigned int p = v ^ (v & (v - 1));
++
++  /* Compute and return r = log2 (p), using code from
++     http://graphics.stanford.edu/~seander/bithacks.html#IntegerLogDeBruijn */
++  return MultiplyDeBruijnBitPosition[(uint32_t) (p * 0x077CB531UL) >> 27];
++}
++
++/* Map the dirent.d_type value, DTYPE, to the corresponding stat.st_mode
++   S_IF* bit and set ST.st_mode, thus clearing all other bits in that field.  */
++static void
++set_stat_type (struct stat *st, unsigned int dtype)
++{
++  mode_t type;
++  switch (dtype)
++    {
++    case DT_BLK:
++      type = S_IFBLK;
++      break;
++    case DT_CHR:
++      type = S_IFCHR;
++      break;
++    case DT_DIR:
++      type = S_IFDIR;
++      break;
++    case DT_FIFO:
++      type = S_IFIFO;
++      break;
++    case DT_LNK:
++      type = S_IFLNK;
++      break;
++    case DT_REG:
++      type = S_IFREG;
++      break;
++    case DT_SOCK:
++      type = S_IFSOCK;
++      break;
++    default:
++      type = 0;
++    }
++  st->st_mode = dtype << s_ifmt_shift_bits ();
++}
++
+ /*
+  * This is the tricky part -- do not casually change *anything* in here.  The
+  * idea is to build the linked list of entries that are used by fts_children
+@@ -1151,6 +1228,9 @@ mem1:				saved_errno = errno;
+ 					  && DT_IS_KNOWN(dp)
+ 					  && ! DT_MUST_BE(dp, DT_DIR));
+ 			p->fts_info = FTS_NSOK;
++			/* Propagate dirent.d_type information back
++			   to caller, when possible.  */
++			set_stat_type (p->fts_statp, D_TYPE (dp));
+ 			fts_set_stat_required(p, !skip_stat);
+ 			is_dir = (ISSET(FTS_PHYSICAL) && ISSET(FTS_NOSTAT)
+ 				  && DT_MUST_BE(dp, DT_DIR));
+-- 
+1.7.1
+
+
+From f31fd7a465ad59b685b284aeed15eb65517792be Mon Sep 17 00:00:00 2001
+From: Jim Meyering <meyering@redhat.com>
+Date: Sat, 29 Nov 2008 16:08:09 +0100
+Subject: [PATCH 2/6] fts: fix a thinko
+
+* lib/fts.c (s_ifmt_shift_bits): Remove function.  Not needed after all.
+(set_stat_type): Return S_IF*-valued "type" directly.
+Prompted by James Youngman's spotting a related bug.
+Confirmed by further testing through find.
+
+Upstream-commit: d4b129b8e5f8a8d1198020fd6fc79310d305936c
+Signed-off-by: Kamil Dudka <kdudka@redhat.com>
+---
+ gnulib/lib/fts.c | 22 +---------------------
+ 1 file changed, 1 insertion(+), 21 deletions(-)
+
+diff --git a/gnulib/lib/fts.c b/gnulib/lib/fts.c
+index a5c0bcf..7d8a40b 100644
+--- a/gnulib/lib/fts.c
++++ b/gnulib/lib/fts.c
+@@ -933,26 +933,6 @@ fts_children (register FTS *sp, int instr)
+ 	return (sp->fts_child);
+ }
+ 
+-/* Return the number of bits by which a d_type value must be shifted
+-   left in order to put it into the S_IFMT bits of stat.st_mode.  */
+-static int
+-s_ifmt_shift_bits (void)
+-{
+-  unsigned int v = S_IFMT; /* usually, 0170000 */
+-  static const int MultiplyDeBruijnBitPosition[32] =
+-    {
+-      0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8,
+-      31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9
+-    };
+-
+-  /* Find the smallest power of two, P (e.g., 0010000) such that P & V == P. */
+-  unsigned int p = v ^ (v & (v - 1));
+-
+-  /* Compute and return r = log2 (p), using code from
+-     http://graphics.stanford.edu/~seander/bithacks.html#IntegerLogDeBruijn */
+-  return MultiplyDeBruijnBitPosition[(uint32_t) (p * 0x077CB531UL) >> 27];
+-}
+-
+ /* Map the dirent.d_type value, DTYPE, to the corresponding stat.st_mode
+    S_IF* bit and set ST.st_mode, thus clearing all other bits in that field.  */
+ static void
+@@ -985,7 +965,7 @@ set_stat_type (struct stat *st, unsigned int dtype)
+     default:
+       type = 0;
+     }
+-  st->st_mode = dtype << s_ifmt_shift_bits ();
++  st->st_mode = type;
+ }
+ 
+ /*
+-- 
+2.4.6
+
+
+From fdf9383d9efa199370b82d92a6aab70589fe337e Mon Sep 17 00:00:00 2001
+From: James Youngman <jay@gnu.org>
+Date: Sun, 30 Nov 2008 23:18:25 +0000
+Subject: [PATCH 3/6] Apply patch from Jim Meyering: Pass file type information
+ in dirent.d_type from fts to find in order to avoid extra stat calls.
+
+Upstream-commit: acb82fe44369c108b43ec3e805aa94bf28352d0a
+Signed-off-by: Kamil Dudka <kdudka@redhat.com>
+---
+ find/ftsfind.c |    8 ++++----
+ 1 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/find/ftsfind.c b/find/ftsfind.c
+index 3c9ae1d..f6615fd 100644
+--- a/find/ftsfind.c
++++ b/find/ftsfind.c
+@@ -445,8 +445,8 @@ consider_visiting(FTS *p, FTSENT *ent)
+       || ent->fts_info == FTS_NS /* e.g. symlink loop */)
+     {
+       assert (!state.have_stat);
+-      assert (!state.have_type);
+-      state.type = mode = 0;
++      assert (state.type != 0);
++      mode = state.type;
+     }
+   else
+     {
+@@ -595,8 +595,8 @@ find(char *arg)
+ 	  level = (int)ent->fts_level;
+ 
+ 	  state.have_stat = false;
+-	  state.have_type = false;
+-	  state.type = 0;
++	  state.have_type = !!ent->fts_statp->st_mode;
++	  state.type = state.have_type ? ent->fts_statp->st_mode : 0;
+ 	  consider_visiting(p, ent);
+ 	}
+       fts_close(p);
+-- 
+1.7.1
+
+
+From 9bddd3520fcda5676be05bbf6b9642bc16d6a59b Mon Sep 17 00:00:00 2001
+From: Jim Meyering <meyering@redhat.com>
+Date: Fri, 26 Dec 2008 18:28:10 +0100
+Subject: [PATCH 4/6] find: take advantage of new gnulib/fts leaf-optimization
+
+* find/ftsfind.c (consider_visiting): Allow state.type to be 0
+when fts_info is FTS_NSOK;
+
+This allows find to process an fts entry for which fts_read returns
+FTS_NSOK (no stat) but for which find requires only type info.
+This happens on file systems that lack dirent.dtype information.
+Currently, only reiserfs is handled this way.  Until the recent
+gnulib/fts change, [97d5b66] "fts: arrange not to stat non-directories
+in more cases" this change was not necessary, because fts would always
+stat non-dir entries on a file system with no dirent.dtype information.
+
+However, combined with the gnulib change, this change lets find
+avoid many per-non-directory stat-like syscalls (i.e. fstatat)
+in some very common cases, like "find . -print" on reiserfs --
+which can be a huge performance savings.
+
+Upstream-commit: e3bcac430a07a05ba2ac66587d168a842ba8c0ea
+Signed-off-by: Kamil Dudka <kdudka@redhat.com>
+---
+ find/ftsfind.c |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/find/ftsfind.c b/find/ftsfind.c
+index f6615fd..64d1f69 100644
+--- a/find/ftsfind.c
++++ b/find/ftsfind.c
+@@ -445,7 +445,7 @@ consider_visiting(FTS *p, FTSENT *ent)
+       || ent->fts_info == FTS_NS /* e.g. symlink loop */)
+     {
+       assert (!state.have_stat);
+-      assert (state.type != 0);
++      assert (ent->fts_info == FTS_NSOK || state.type != 0);
+       mode = state.type;
+     }
+   else
+-- 
+1.7.1
+
+
+From b237020328abf012198433f6409f89cc9162691c Mon Sep 17 00:00:00 2001
+From: James Youngman <jay@gnu.org>
+Date: Mon, 2 Mar 2009 02:02:31 +0000
+Subject: [PATCH 5/6] Fix Savannah bug #25359.
+
+Fix Savannah bug #25359.
+* find/ftsfind.c (consider_visiting): discard mode information
+from fts when the -H option is in effect and the current file is a
+symbolic link.
+(find): don't decode the mode information that find is trying to
+pass to us in that case, since we don't want to use it.
+* find.posix/sv-bug-25359.exp: new test for this bug.
+* find.posix/sv-bug-25359.xo: expected output for the test.
+* NEWS: Mention this bugfix.
+
+Upstream-commit: 0b1acd3358466b02f32baf9423665113dc933492
+Signed-off-by: Kamil Dudka <kdudka@redhat.com>
+---
+ find/ftsfind.c                             |   30 ++++++++++++++++++++++++---
+ find/testsuite/Makefile.am                 |    2 +
+ find/testsuite/find.posix/sv-bug-25359.exp |   10 +++++++++
+ find/testsuite/find.posix/sv-bug-25359.xo  |    1 +
+ 4 files changed, 39 insertions(+), 4 deletions(-)
+ create mode 100644 find/testsuite/find.posix/sv-bug-25359.exp
+ create mode 100644 find/testsuite/find.posix/sv-bug-25359.xo
+
+diff --git a/find/ftsfind.c b/find/ftsfind.c
+index 64d1f69..2aa077c 100644
+--- a/find/ftsfind.c
++++ b/find/ftsfind.c
+@@ -445,8 +445,22 @@ consider_visiting(FTS *p, FTSENT *ent)
+       || ent->fts_info == FTS_NS /* e.g. symlink loop */)
+     {
+       assert (!state.have_stat);
+-      assert (ent->fts_info == FTS_NSOK || state.type != 0);
+-      mode = state.type;
++      if ((options.symlink_handling == SYMLINK_DEREF_ARGSONLY)
++	  && (S_ISLNK(mode)))
++	{
++	  /* Force whichever stat version we should be using; the file
++	   * type information from fts doesn't take account of -H.
++	   * This conditional fixes Savannah bug 25359, but the bug
++	   * only manifests on filesystems which populate d_type.
++	   */
++	  state.have_type = 0;
++	  state.type = mode = 0;	  
++	}
++      else
++	{
++	  assert (ent->fts_info == FTS_NSOK || state.type != 0);
++	  mode = state.type;
++	}
+     }
+   else
+     {
+@@ -595,8 +609,16 @@ find(char *arg)
+ 	  level = (int)ent->fts_level;
+ 
+ 	  state.have_stat = false;
+-	  state.have_type = !!ent->fts_statp->st_mode;
+-	  state.type = state.have_type ? ent->fts_statp->st_mode : 0;
++	  if (options.symlink_handling == SYMLINK_DEREF_ARGSONLY)
++	    {
++	      state.have_type = false;
++	      state.type = 0;
++	    }
++	  else
++	    {
++	      state.have_type = !!ent->fts_statp->st_mode;
++	      state.type = state.have_type ? ent->fts_statp->st_mode : 0;
++	    }
+ 	  consider_visiting(p, ent);
+ 	}
+       fts_close(p);
+diff --git a/find/testsuite/Makefile.am b/find/testsuite/Makefile.am
+index aa32d4b..094915c 100644
+--- a/find/testsuite/Makefile.am
++++ b/find/testsuite/Makefile.am
+@@ -80,6 +80,7 @@ find.posix/links.xo \
+ find.posix/sv-bug-11175.xo \
+ find.posix/sv-bug-12181.xo \
+ find.posix/sv-bug-27563-exec.xo \
++find.posix/sv-bug-25359.xo \
+ find.posix/depth1.xo \
+ find.posix/mtime0.xo \
+ find.posix/sizes.xo \
+@@ -203,6 +204,7 @@ find.posix/mtime0.exp \
+ find.posix/sv-bug-11175.exp \
+ find.posix/sv-bug-12181.exp \
+ find.posix/sv-bug-27563-exec.exp \
++find.posix/sv-bug-25359.exp \
+ find.posix/depth1.exp \
+ find.posix/sizes.exp \
+ find.posix/name.exp \
+diff --git a/find/testsuite/find.posix/sv-bug-25359.exp b/find/testsuite/find.posix/sv-bug-25359.exp
+new file mode 100644
+index 0000000..1b38d3f
+--- /dev/null
++++ b/find/testsuite/find.posix/sv-bug-25359.exp
+@@ -0,0 +1,10 @@
++# Test for Savannah bug 25359
++# (ftsfind -H thinks that non-argument symlinks are files
++# when linked with gnulib d4b129b8e5f8a8d1198020fd6fc79310d305936c
++# Affecting findutils 	
++# from acb82fe44369c108b43ec3e805aa94bf28352d0a 
++exec rm -rf  tmp
++exec mkdir tmp
++exec ln -s / tmp/symlink
++find_start p {-H tmp -type l -print}
++exec rm -rf tmp
+diff --git a/find/testsuite/find.posix/sv-bug-25359.xo b/find/testsuite/find.posix/sv-bug-25359.xo
+new file mode 100644
+index 0000000..8ec2030
+--- /dev/null
++++ b/find/testsuite/find.posix/sv-bug-25359.xo
+@@ -0,0 +1 @@
++tmp/symlink
+-- 
+1.7.1
+
+
+From 93378f000656bdd6fb512a1271ffabcaa06a15e9 Mon Sep 17 00:00:00 2001
+From: James Youngman <jay@gnu.org>
+Date: Wed, 4 Mar 2009 00:04:36 +0000
+Subject: [PATCH 6/6] Fix Savannah bug #25359, more efficiently (suggestion by
+ Nick Fortino).
+
+* find/ftsfind.c (consider_visiting): revert the previous change
+which discarded type information, and instead simply ensure that
+state.curdepth holds the correct value before digest_mode() is
+called.
+(find): revert the previous change.
+(visit): we no longer need to set state.curdepth here, since it
+will have been set already in consider_visiting().
+
+Signed-off-by: James Youngman <jay@gnu.org>
+
+Upstream-commit: b445af98c22cd2d13673e2699a77ab728a7073b0
+Signed-off-by: Kamil Dudka <kdudka@redhat.com>
+---
+ find/ftsfind.c |   35 ++++++++---------------------------
+ 1 files changed, 8 insertions(+), 27 deletions(-)
+
+diff --git a/find/ftsfind.c b/find/ftsfind.c
+index 2aa077c..b9dc07e 100644
+--- a/find/ftsfind.c
++++ b/find/ftsfind.c
+@@ -209,7 +209,6 @@ visit(FTS *p, FTSENT *ent, struct stat *pstat)
+ {
+   struct predicate *eval_tree;
+   
+-  state.curdepth = ent->fts_level;
+   state.have_stat = (ent->fts_info != FTS_NS) && (ent->fts_info != FTS_NSOK);
+   state.rel_pathname = ent->fts_accpath;
+   state.cwd_dir_fd   = p->fts_cwd_fd;
+@@ -445,22 +444,8 @@ consider_visiting(FTS *p, FTSENT *ent)
+       || ent->fts_info == FTS_NS /* e.g. symlink loop */)
+     {
+       assert (!state.have_stat);
+-      if ((options.symlink_handling == SYMLINK_DEREF_ARGSONLY)
+-	  && (S_ISLNK(mode)))
+-	{
+-	  /* Force whichever stat version we should be using; the file
+-	   * type information from fts doesn't take account of -H.
+-	   * This conditional fixes Savannah bug 25359, but the bug
+-	   * only manifests on filesystems which populate d_type.
+-	   */
+-	  state.have_type = 0;
+-	  state.type = mode = 0;	  
+-	}
+-      else
+-	{
+-	  assert (ent->fts_info == FTS_NSOK || state.type != 0);
+-	  mode = state.type;
+-	}
++      assert (ent->fts_info == FTS_NSOK || state.type != 0);
++      mode = state.type;
+     }
+   else
+     {
+@@ -477,6 +462,10 @@ consider_visiting(FTS *p, FTSENT *ent)
+ 	}
+     }
+ 
++  /* update state.curdepth before calling digest_mode(), because digest_mode
++   * may call following_links().
++   */
++  state.curdepth = ent->fts_level;
+   if (mode)
+     {
+       if (!digest_mode(mode, ent->fts_path, ent->fts_name, &statbuf, 0))
+@@ -609,16 +598,8 @@ find(char *arg)
+ 	  level = (int)ent->fts_level;
+ 
+ 	  state.have_stat = false;
+-	  if (options.symlink_handling == SYMLINK_DEREF_ARGSONLY)
+-	    {
+-	      state.have_type = false;
+-	      state.type = 0;
+-	    }
+-	  else
+-	    {
+-	      state.have_type = !!ent->fts_statp->st_mode;
+-	      state.type = state.have_type ? ent->fts_statp->st_mode : 0;
+-	    }
++	  state.have_type = !!ent->fts_statp->st_mode;
++	  state.type = state.have_type ? ent->fts_statp->st_mode : 0;
+ 	  consider_visiting(p, ent);
+ 	}
+       fts_close(p);
+-- 
+1.7.1
+

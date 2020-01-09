@@ -1,0 +1,150 @@
+From 4e691cf05576e2fe517178ad9068af8b4d93583e Mon Sep 17 00:00:00 2001
+From: Bernhard Voelker <mail@bernhard-voelker.de>
+Date: Fri, 2 Aug 2013 12:16:44 +0200
+Subject: [PATCH] find: fix fd leak with --execdir option (bug#34976)
+
+Prevent "Failed to save working dir[...]: Too many open files"
+error by closing the file descriptor of the working directory.
+
+* find/exec.c (impl_pred_exec): Free the working directory if find
+executes the command in the local dir, i.e. if it has been saved
+by record_exec_dir().
+* find/testsuite/sv-34976-execdir-fd-leak.sh: Add test.
+* find/testsuite/Makefile.am (test_shell_progs): Mention the test.
+
+Upstream-commit: 183115d0484816336f9c4d2a3198b5eae2ad4b92
+Signed-off-by: Kamil Dudka <kdudka@redhat.com>
+---
+ find/pred.c                                |  2 +
+ find/testsuite/Makefile.am                 |  3 +-
+ find/testsuite/sv-34976-execdir-fd-leak.sh | 86 ++++++++++++++++++++++++++++++
+ 3 files changed, 90 insertions(+), 1 deletion(-)
+ create mode 100644 find/testsuite/sv-34976-execdir-fd-leak.sh
+
+diff --git a/find/pred.c b/find/pred.c
+index d6bbaea..f30fe71 100644
+--- a/find/pred.c
++++ b/find/pred.c
+@@ -684,6 +684,8 @@ impl_pred_exec (const char *pathname,
+       /* Actually invoke the command. */
+       result = execp->ctl.exec_callback(&execp->ctl,
+ 					&execp->state);
++      if (local)
++	free_cwd (execp->wd_for_exec);
+     }
+   if (target != pathname)
+     {
+diff --git a/find/testsuite/Makefile.am b/find/testsuite/Makefile.am
+index 094915c..c15ad52 100644
+--- a/find/testsuite/Makefile.am
++++ b/find/testsuite/Makefile.am
+@@ -234,12 +234,13 @@ find.posix/exec-one.exp \
+ find.posix/user-empty.exp \
+ find.posix/user-missing.exp
+ 
+-EXTRA_DIST = $(EXTRA_DIST_EXP) $(EXTRA_DIST_XO)
++EXTRA_DIST = $(EXTRA_DIST_EXP) $(EXTRA_DIST_XO) sv-34976-execdir-fd-leak.sh
+ 
+ CLEANFILES = *.log *.sum site.exp site.bak
+ 
+ #DIST_SUBDIRS = config
+ 
++TESTS = sv-34976-execdir-fd-leak.sh
+ 
+ checklists:
+ 	cd $(srcdir) && \
+diff --git a/find/testsuite/sv-34976-execdir-fd-leak.sh b/find/testsuite/sv-34976-execdir-fd-leak.sh
+new file mode 100644
+index 0000000..e71f1f2
+--- /dev/null
++++ b/find/testsuite/sv-34976-execdir-fd-leak.sh
+@@ -0,0 +1,86 @@
++#! /bin/sh
++# Copyright (C) 2013 Free Software Foundation, Inc.
++#
++# This program is free software: you can redistribute it and/or modify
++# it under the terms of the GNU General Public License as published by
++# the Free Software Foundation, either version 3 of the License, or
++# (at your option) any later version.
++#
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU General Public License for more details.
++#
++# You should have received a copy of the GNU General Public License
++# along with this program.  If not, see <http://www.gnu.org/licenses/>.
++#
++
++# This test verifies that find does not leak a file descriptor for the working
++# directory specified by the -execdir option [Savannah bug #34976].
++
++testname="$(basename $0)"
++
++parent="$(cd .. && pwd)"
++if [[ -f "${parent}/ftsfind" ]]; then
++    ftsfind="${parent}/ftsfind"
++    oldfind="${parent}/find"
++elif [[ -f "${parent}/oldfind" ]]; then
++    ftsfind="${parent}/find"
++    oldfind="${parent}/oldfind"
++else
++    echo "Cannot find the executables to test." >&2
++    exit 1
++fi
++
++# Test if restricting the number of file descriptors via ulimit -n works.
++test_ulimit() {
++  n="$1"  # number of files
++  l="$2"  # limit to use
++  (
++    ulimit -n "$l" || exit 1
++    for i in $(seq $n) ; do
++      printf "exec %d> /dev/null || exit 1\n" $i
++    done | sh ;
++  ) 2>/dev/null
++}
++# Opening 30 files with a limit of 40 should work.
++test_ulimit 30 40 || { echo "SKIP: ulimit does not work" >&2; exit 0 ; }
++# Opening 30 files with a limit of 20 should fail.
++test_ulimit 30 20 && { echo "SKIP: ulimit does not work" >&2; exit 0 ; }
++
++die() {
++  echo "$@" >&2
++  exit 1
++}
++
++# Create test files, each 100 in the directories ".", "one" and "two".
++make_test_data() {
++  d="$1"
++  (
++    cd "$1" || exit 1
++    mkdir one two || exit 1
++    for i in $(seq 0 100) ; do
++      printf "./%03d one/%03d two/%03d " $i $i $i
++    done \
++      | xargs touch || exit 1
++  ) \
++  || die "failed to set up the test in ${outdir}"
++}
++
++outdir="$(mktemp -d)" || die "FAIL: could not create a test files."
++
++# Create some test files.
++make_test_data "${outdir}" || die "FAIL: failed to set up the test in ${outdir}"
++
++fail=0
++for exe in "${ftsfind}" "${oldfind}"; do
++  ( ulimit -n 30 && \
++    ${exe} "${outdir}"  -type f -execdir cat '{}' \; >/dev/null; ) \
++  || { \
++    echo "Option -execdir of ${exe} leaks file descriptors" >&2 ; \
++    fail=1 ; \
++  }
++done
++
++rm -rf "${outdir}" || exit 1
++exit $fail
+-- 
+2.5.0
+

@@ -1,0 +1,122 @@
+From b0fc3fd7205bb759ce0917fe9b0a6447b4a964d4 Mon Sep 17 00:00:00 2001
+From: Reuben Thomas <rrt@sc3d.org>
+Date: Fri, 10 Jul 2009 10:24:33 +0100
+Subject: [PATCH] Fix quotation punctuation in find manual page.
+
+* find/find.1: Use ` instead of ' at the start of quoted text.  Use
+\(aq instead of ' or \' in commands to get a literal straight quote.
+Use ` and ' instead of `` and '' (for consistency).
+
+Signed-off-by: James Youngman <jay@gnu.org>
+
+Upstream-commit: c440d6c1ad89bafc07e132a51cc50ec848c6d494
+Signed-off-by: Kamil Dudka <kdudka@redhat.com>
+---
+ find/find.1 | 40 +++++++++++++++++++++++++---------------
+ 1 file changed, 25 insertions(+), 15 deletions(-)
+
+diff --git a/find/find.1 b/find/find.1
+index 27ad1da..7cdaf6b 100644
+--- a/find/find.1
++++ b/find/find.1
+@@ -587,7 +587,7 @@ Like
+ but the match is case insensitive.  For example, the
+ patterns `fo*' and `F??' match the file names `Foo', `FOO', `foo',
+ `fOo', etc.   In these patterns, unlike filename expansion by the
+-shell, an initial '.' can be matched by `*'.  That is, 
++shell, an initial `.' can be matched by `*'.  That is, 
+ .B find \-name *bar 
+ will match the file `.foobar'.   Please note that you should quote
+ patterns as a matter of course, otherwise the shell will expand any
+@@ -756,14 +756,11 @@ and will be in a forthcoming version of the POSIX standard.
+ File's permission bits are exactly \fImode\fR (octal or symbolic).
+ Since an exact match is required, if you want to use this form for
+ symbolic modes, you may have to specify a rather complex mode string.
+-For example 
+-.B \-perm g=w
+-will only match files which have mode 0020
++For example `\-perm g=w' will only match files which have mode 0020
+ (that is, ones for which group write permission is the only permission
+ set).  It is more likely that you will want to use the `/' or `-'
+-forms, for example 
+-.BR "\-perm \-g=w" ,
+-which matches any file with group write permission.  See the
++forms, for example `\-perm \-g=w', which matches any file with group
++write permission.  See the
+ .B EXAMPLES 
+ section for some illustrative examples.
+ 
+@@ -952,7 +949,7 @@ exit status will be nonzero
+ Use of 
+ .B \-delete 
+ automatically turns on the 
+-.B \-depth 
++.RB ` \-depth '
+ option.   
+ 
+ .BR Warnings :
+@@ -1058,8 +1055,8 @@ section for information about how unusual characters in filenames are handled.
+ .IP "\-fprint \fIfile\fR"
+ True; print the full file name into file \fIfile\fR.  If \fIfile\fR
+ does not exist when \fBfind\fR is run, it is created; if it does
+-exist, it is truncated.  The file names ``/dev/stdout'' and
+-``/dev/stderr'' are handled specially; they refer to the standard
++exist, it is truncated.  The file names `/dev/stdout' and
++`/dev/stderr' are handled specially; they refer to the standard
+ output and standard error output, respectively.
+ The output file is always created, even if the predicate is never matched.
+ See the
+@@ -1595,6 +1592,20 @@ The predicates
+ .BR \-user  
+ and 
+ .B \-xdev
++`\-atime',
++`\-ctime',
++`\-depth',
++`\-group',
++`\-links',
++`\-mtime',
++`\-nogroup',
++`\-nouser',
++`\-perm',
++`\-print',
++`\-prune',
++`\-size',
++`\-user' and
++`\-xdev',
+ are all supported.
+ 
+ .P
+@@ -1729,8 +1740,7 @@ and
+ .BR \-fls . 
+ If 
+ .B POSIXLY_CORRECT
+-is set, blocks are units of 512 bytes.  Otherwise
+-they are units of 1024 bytes.   
++is set, blocks are units of 512 bytes.  Otherwise they are units of 1024 bytes.
+ .IP
+ Setting this variable also turns off
+ warning messages (that is, implies
+@@ -1806,9 +1816,8 @@ could have been used in that case also.
+ 
+ .P
+ .nf
+-.B find /  \e
+-.B \e( \-perm \-4000 \-fprintf /root/suid.txt "%#m %u %p\en" \e) , \e
+-.B \e( \-size +100M \-fprintf /root/big.txt  "%\-10s %p\en" \e)
++.B find / \e( \-perm \-4000 \-fprintf /root/suid.txt \(aq%#m %u %p\en\(aq \e) , \e
++.B  \e( \-size +100M \-fprintf /root/big.txt  \(aq%\-10s %p\en\(aq \e)
+ 
+ .fi
+ Traverse the filesystem just once, listing setuid files and
+@@ -2067,6 +2076,7 @@ actually receiving a command line like this:
+ That command is of course not going to work.  Instead of doing things
+ this way, you should enclose the pattern in quotes or escape the wildcard:
+ .nf
++.B $ find . \-name \(aq*.c\(aq \-print
+ .B $ find . \-name \e*.c \-print
+ .fi
+ 
+-- 
+2.5.0
+

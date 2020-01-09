@@ -1,7 +1,7 @@
 Summary: The GNU versions of find utilities (find and xargs)
 Name: findutils
 Version: 4.4.2
-Release: 6%{?dist}
+Release: 8%{?dist}
 Epoch: 1
 License: GPLv3+
 Group: Applications/File
@@ -14,6 +14,9 @@ Patch3: findutils-4.4.2-autofs.patch
 Patch4: findutils-4.4.2-xautofs.patch
 Patch5: findutils-4.4.2-fts-remount.patch
 Patch6: findutils-4.4.2-execdir.patch
+Patch7: findutils-4.4.2-bz883285.patch
+Patch8: findutils-4.4.2-man-page.patch
+Patch9: findutils-4.4.2-fd-leak.patch
 Requires(post): /sbin/install-info
 Requires(preun): /sbin/install-info
 Buildroot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
@@ -40,6 +43,11 @@ useful for finding things on your system.
 %patch4 -p1
 %patch5 -p1
 %patch6 -p1
+%patch7 -p1
+%patch8 -p1
+
+%patch9 -p1
+chmod 0755 "find/testsuite/sv-34976-execdir-fd-leak.sh"
 
 autoreconf
 
@@ -97,7 +105,14 @@ rm -rf $RPM_BUILD_ROOT
 %{_infodir}/find-maint.info.gz
 
 %changelog
-* Wed Jul 16 2010 Kamil Dudka <kdudka@redhat.com> - 1:4.4.2-6
+* Wed Jan 06 2016 Kamil Dudka <kdudka@redhat.com> - 1:4.4.2-8
+- fix quotation punctuation in find(1) man page (#659730)
+- fix file descriptor leak with --execdir option (#1223557)
+
+* Thu Oct 29 2015 Kamil Dudka <kdudka@redhat.com> - 1:4.4.2-7
+- do not stat() file if only its type is needed and already available (#883285)
+
+* Wed Jun 16 2010 Kamil Dudka <kdudka@redhat.com> - 1:4.4.2-6
 - backport of patches for upstream bugs #19593, #27563 and #29949 (rhbz #589621)
 
 * Wed Nov 18 2009 Kamil Dudka <kdudka@redhat.com> - 1:4.4.2-5
