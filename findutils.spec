@@ -1,7 +1,7 @@
 Summary: The GNU versions of find utilities (find and xargs)
 Name: findutils
 Version: 4.4.2
-Release: 8%{?dist}
+Release: 9%{?dist}
 Epoch: 1
 License: GPLv3+
 Group: Applications/File
@@ -105,6 +105,9 @@ rm -rf $RPM_BUILD_ROOT
 %{_infodir}/find-maint.info.gz
 
 %changelog
+* Mon Feb 08 2016 Kamil Dudka <kdudka@redhat.com> - 1:4.4.2-9
+- fix assertion failure after stat() failure (#1305063)
+
 * Wed Jan 06 2016 Kamil Dudka <kdudka@redhat.com> - 1:4.4.2-8
 - fix quotation punctuation in find(1) man page (#659730)
 - fix file descriptor leak with --execdir option (#1223557)
