@@ -1,0 +1,166 @@
+From 1b7065f25457fea9f9ee7100437b12815b92a38c Mon Sep 17 00:00:00 2001
+From: Kamil Dudka <kdudka@redhat.com>
+Date: Wed, 11 May 2011 16:46:57 +0200
+Subject: [PATCH 4/4] findutils-4.5.7-warnings.patch
+
+---
+ find/Makefile.am  |    2 +-
+ find/defs.h       |    2 +-
+ find/exec.c       |    2 +-
+ find/find.c       |   14 +-------------
+ find/pred.c       |    2 +-
+ lib/Makefile.am   |    2 +-
+ xargs/Makefile.am |    2 +-
+ xargs/xargs.c     |    5 +++--
+ 8 files changed, 10 insertions(+), 21 deletions(-)
+
+diff --git a/find/Makefile.am b/find/Makefile.am
+index 0795b87..f1068bf 100644
+--- a/find/Makefile.am
++++ b/find/Makefile.am
+@@ -36,7 +36,7 @@ endif
+ # We don't just include man_MANS in EXTRA_DIST because while the value of
+ # man_MANS is not always the same, we want to distribute all of those files.
+ EXTRA_DIST = defs.h sharefile.h print.h find.1 ftsfind.1 oldfind.1
+-INCLUDES = -I../gl/lib -I$(top_srcdir)/lib -I$(top_srcdir)/gl/lib -I../intl -DLOCALEDIR=\"$(localedir)\"
++AM_CPPFLAGS = -I../gl/lib -I$(top_srcdir)/lib -I$(top_srcdir)/gl/lib -I../intl -DLOCALEDIR=\"$(localedir)\"
+ LDADD = ./libfindtools.a ../lib/libfind.a ../gl/lib/libgnulib.a $(LIBINTL) $(LIB_CLOCK_GETTIME) $(LIB_EACCESS) $(LIB_SELINUX) $(LIB_CLOSE) $(MODF_LIBM) $(FINDLIBS) $(GETHOSTNAME_LIB) $(LIB_EACCESS)
+ # gnulib advises we link against <first> because we use <second>:
+ # $(GETHOSTNAME_LIB)            uname
+diff --git a/find/defs.h b/find/defs.h
+index 366edab..f25b700 100644
+--- a/find/defs.h
++++ b/find/defs.h
+@@ -258,7 +258,7 @@ struct predicate
+ 
+   /* Only used for debugging, but defined unconditionally so individual
+      modules can be compiled with -DDEBUG.  */
+-  char *p_name;
++  const char *p_name;
+ 
+   /* The type of this node.  There are two kinds.  The first is real
+      predicates ("primaries") such as -perm, -print, or -exec.  The
+diff --git a/find/exec.c b/find/exec.c
+index aa69fe3..f731d82 100644
+--- a/find/exec.c
++++ b/find/exec.c
+@@ -324,7 +324,7 @@ launch (struct buildcmd_control *ctl, void *usercontext, int argc, char **argv)
+ 	    }
+ 	}
+ 
+-      if (bc_args_exceed_testing_limit (argv))
++      if (bc_args_exceed_testing_limit ((const char **) argv))
+ 	errno = E2BIG;
+       else
+ 	execvp (argv[0], argv);
+diff --git a/find/find.c b/find/find.c
+index 5d287b5..00a2a6c 100644
+--- a/find/find.c
++++ b/find/find.c
+@@ -528,6 +528,7 @@ wd_sanity_check (const char *thing_to_stat,
+ #ifdef STAT_MOUNTPOINTS
+ 	  isfatal = dirchange_is_fatal (specific_what,isfatal,silent,newinfo);
+ #else
++      (void) silent;
+ 	  isfatal = RETRY_IF_SANITY_CHECK_FAILS;
+ #endif
+ 	}
+@@ -1302,7 +1303,6 @@ process_dir (char *pathname, char *name, int pathlen, const struct stat *statp,
+ {
+   int subdirs_left;		/* Number of unexamined subdirs in PATHNAME. */
+   bool subdirs_unreliable;	/* if true, cannot use dir link count as subdir limif (if false, it may STILL be unreliable) */
+-  unsigned int idx;		/* Which entry are we on? */
+   struct stat stat_buf;
+   size_t dircount = 0u;
+   DIR *dirp;
+@@ -1519,7 +1519,6 @@ process_dir (char *pathname, char *name, int pathlen, const struct stat *statp,
+       if (strcmp (name, "."))
+ 	{
+ 	  enum SafeChdirStatus status;
+-	  struct dir_id did;
+ 
+ 	  /* We could go back and do the next command-line arg
+ 	     instead, maybe using longjmp.  */
+@@ -1555,17 +1554,6 @@ process_dir (char *pathname, char *name, int pathlen, const struct stat *statp,
+ 		     "%s", safely_quote_err_filename (0, pathname));
+ 	      return;
+ 	    }
+-
+-	  if (dir_curr > 0)
+-	    {
+-	      did.dev = dir_ids[dir_curr-1].dev;
+-	      did.ino = dir_ids[dir_curr-1].ino;
+-	    }
+-	  else
+-	    {
+-	      did.dev = starting_stat_buf.st_dev;
+-	      did.ino = starting_stat_buf.st_ino;
+-	    }
+ 	}
+ 
+       free (cur_path);
+diff --git a/find/pred.c b/find/pred.c
+index 88dacd9..e9c9a49 100644
+--- a/find/pred.c
++++ b/find/pred.c
+@@ -1216,7 +1216,7 @@ pred_context (const char *pathname, struct stat *stat_buf,
+    Return BUF. */
+ 
+ static char *
+-blank_rtrim (char *str, char *buf)
++blank_rtrim (const char *str, char *buf)
+ {
+   int i;
+ 
+diff --git a/lib/Makefile.am b/lib/Makefile.am
+index bbb4dc2..eba43d2 100644
+--- a/lib/Makefile.am
++++ b/lib/Makefile.am
+@@ -28,7 +28,7 @@ DISTCLEANFILES =
+ MAINTAINERCLEANFILES =
+ 
+ 
+-INCLUDES = -I../gl/lib -I$(top_srcdir)/gl/lib
++AM_CPPFLAGS = -I../gl/lib -I$(top_srcdir)/gl/lib
+ LDADD = ../gl/lib/libgnulib.a $(LIBINTL)
+ 
+ libfind_a_SOURCES += printquoted.h listfile.h \
+diff --git a/xargs/Makefile.am b/xargs/Makefile.am
+index d34f87a..1cfe3e4 100644
+--- a/xargs/Makefile.am
++++ b/xargs/Makefile.am
+@@ -3,7 +3,7 @@ AM_CFLAGS = $(WARN_CFLAGS)
+ localedir = $(datadir)/locale
+ bin_PROGRAMS = xargs
+ man_MANS = xargs.1
+-INCLUDES = -I.. -I../gl/lib -I$(top_srcdir)/gl/lib -I$(top_srcdir)/lib -I../intl -DLOCALEDIR=\"$(localedir)\"
++AM_CPPFLAGS = -I.. -I../gl/lib -I$(top_srcdir)/gl/lib -I$(top_srcdir)/lib -I../intl -DLOCALEDIR=\"$(localedir)\"
+ LDADD = ../lib/libfind.a ../gl/lib/libgnulib.a $(LIB_CLOSE) $(LIBINTL)
+ EXTRA_DIST = $(man_MANS)
+ SUBDIRS = . testsuite
+diff --git a/xargs/xargs.c b/xargs/xargs.c
+index 3cc1832..35f6822 100644
+--- a/xargs/xargs.c
++++ b/xargs/xargs.c
+@@ -1208,7 +1208,7 @@ xargs_do_exec (struct buildcmd_control *ctl, void *usercontext, int argc, char *
+ 
+ 	    prep_child_for_exec ();
+ 
+-	    if (bc_args_exceed_testing_limit (argv))
++	    if (bc_args_exceed_testing_limit ((const char **) argv))
+ 	      errno = E2BIG;
+ 	    else
+ 	      execvp (argv[0], argv);
+@@ -1226,7 +1226,8 @@ xargs_do_exec (struct buildcmd_control *ctl, void *usercontext, int argc, char *
+ 		 * utility if we run it, for POSIX compliance on the
+ 		 * handling of exit values.
+ 		 */
+-		write (fd[1], &errno, sizeof (int));
++		int sink = write (fd[1], &errno, sizeof (int));
++		(void) sink;
+ 	      }
+ 
+ 	    close (fd[1]);
+-- 
+1.7.4.4
+
