@@ -1,0 +1,84 @@
+From de69fd334b77ec578c2232574fc76222808148b0 Mon Sep 17 00:00:00 2001
+From: Ulrich Weigand <uweigand@de.ibm.com>
+Date: Fri, 30 May 2014 11:34:23 +0100
+Subject: [PATCH] isfinite, isinf, isnan tests: fix for little-endian PowerPC
+
+* tests/test-isfinite.c (test_isfinitel): Only manipulate the
+first double of a PowerPC "double double" pair.
+* tests/test-isinf.c (test_isinfl): Likewise.
+* tests/test-isnan.c (test_long_double): Likewise.
+* tests/test-isnanl.h (main): Likewise.
+* tests/test-signbit.c (test_signbitl): Likewise.
+
+[upstream commit e962c07c0c8bb18f9a5969cbf1ddb01d0fe4f55c]
+
+Signed-off-by: Kamil Dudka <kdudka@redhat.com>
+---
+ tests/test-isfinite.c | 9 +++++++++
+ tests/test-isinf.c    | 9 +++++++++
+ tests/test-isnanl.h   | 9 +++++++++
+ 3 files changed, 27 insertions(+)
+
+diff --git a/tests/test-isfinite.c b/tests/test-isfinite.c
+index 828cd69..8e88b67 100644
+--- a/tests/test-isfinite.c
++++ b/tests/test-isfinite.c
+@@ -152,6 +152,15 @@ test_isfinitel ()
+   /* A bit pattern that is different from a Quiet NaN.  With a bit of luck,
+      it's a Signalling NaN.  */
+   {
++#if defined __powerpc__ && LDBL_MANT_DIG == 106
++    /* This is PowerPC "double double", a pair of two doubles.  Inf and Nan are
++       represented as the corresponding 64-bit IEEE values in the first double;
++       the second is ignored.  Manipulate only the first double.  */
++    #undef NWORDS
++    #define NWORDS \
++      ((sizeof (double) + sizeof (unsigned int) - 1) / sizeof (unsigned int))
++#endif
++
+     memory_long_double m;
+     m.value = zerol / zerol;
+ # if LDBL_EXPBIT0_BIT > 0
+diff --git a/tests/test-isinf.c b/tests/test-isinf.c
+index 253f341..76c132e 100644
+--- a/tests/test-isinf.c
++++ b/tests/test-isinf.c
+@@ -158,6 +158,15 @@ test_isinfl ()
+   /* A bit pattern that is different from a Quiet NaN.  With a bit of luck,
+      it's a Signalling NaN.  */
+   {
++#if defined __powerpc__ && LDBL_MANT_DIG == 106
++    /* This is PowerPC "double double", a pair of two doubles.  Inf and Nan are
++       represented as the corresponding 64-bit IEEE values in the first double;
++       the second is ignored.  Manipulate only the first double.  */
++    #undef NWORDS
++    #define NWORDS \
++      ((sizeof (double) + sizeof (unsigned int) - 1) / sizeof (unsigned int))
++#endif
++
+     memory_long_double m;
+     m.value = zerol / zerol;
+ # if LDBL_EXPBIT0_BIT > 0
+diff --git a/tests/test-isnanl.h b/tests/test-isnanl.h
+index 8a9e684..bf81630 100644
+--- a/tests/test-isnanl.h
++++ b/tests/test-isnanl.h
+@@ -51,6 +51,15 @@ main ()
+   /* A bit pattern that is different from a Quiet NaN.  With a bit of luck,
+      it's a Signalling NaN.  */
+   {
++#if defined __powerpc__ && LDBL_MANT_DIG == 106
++    /* This is PowerPC "double double", a pair of two doubles.  Inf and Nan are
++       represented as the corresponding 64-bit IEEE values in the first double;
++       the second is ignored.  Manipulate only the first double.  */
++    #undef NWORDS
++    #define NWORDS \
++      ((sizeof (double) + sizeof (unsigned int) - 1) / sizeof (unsigned int))
++#endif
++
+     memory_long_double m;
+     m.value = NaNl ();
+ # if LDBL_EXPBIT0_BIT > 0
+-- 
+1.9.3
+

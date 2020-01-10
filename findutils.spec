@@ -1,7 +1,7 @@
 Summary: The GNU versions of find utilities (find and xargs)
 Name: findutils
 Version: 4.5.11
-Release: 3%{?dist}
+Release: 5%{?dist}
 Epoch: 1
 License: GPLv3+
 Group: Applications/File
@@ -21,6 +21,12 @@ Patch3: findutils-4.4.2-xautofs.patch
 
 # eliminate compile-time warnings
 Patch4: findutils-4.5.7-warnings.patch
+
+# eliminate failure of gnulib tests on little-endian PowerPC (#1083145)
+Patch5: findutils-4.5.11-ppc-gnulib-tests.patch
+
+# print a warning if find -perm +omode is used (#1116237)
+Patch6: findutils-4.5.11-bz1116237.patch
 
 Requires(post): /sbin/install-info
 Requires(preun): /sbin/install-info
@@ -53,6 +59,8 @@ rm -rf locate
 %patch2 -p1
 %patch3 -p1
 %patch4 -p1
+%patch5 -p1
+%patch6 -p1
 
 # needed because of findutils-4.4.0-no-locate.patch
 autoreconf -iv
@@ -99,6 +107,12 @@ fi
 %{_infodir}/find-maint.info.gz
 
 %changelog
+* Mon Jun 01 2015 Kamil Dudka <kdudka@redhat.com> - 1:4.5.11-5
+- print a warning if find -perm +omode is used (#1116237)
+
+* Fri Aug 01 2014 Kamil Dudka <kdudka@redhat.com> - 1:4.5.11-4
+- eliminate failure of gnulib tests on little-endian PowerPC (#1125504)
+
 * Fri Jan 24 2014 Daniel Mach <dmach@redhat.com> - 1:4.5.11-3
 - Mass rebuild 2014-01-24
 

@@ -1,0 +1,124 @@
+From f5a43df0bd6481b407a6ec00a24679f521584e20 Mon Sep 17 00:00:00 2001
+From: Paul Eggert <eggert@cs.ucla.edu>
+Date: Mon, 22 Apr 2013 21:49:40 +0100
+Subject: [PATCH] Resolves: #1116237 - find -perm +numeric does not work as
+ expected
+
+Also, do not reject -perm /MODE merely because of POSIXLY_CORRECT.
+Problem reported in <https://savannah.gnu.org/bugs/?38474>.
+* doc/find.texi (Mode Bits): Document this.
+* find/parser.c (parse_help): Mention /MODE, not +MODE.
+Do not reject -perm /MODE merely because POSIXLY_CORRECT is set;
+POSIXLY_CORRECT is not supposed to be for pedantic checking.
+
+[upstream commit 90f0c5d24153ad3327edd6f2249fc95a5cfb72e0]
+
+Signed-off-by: Kamil Dudka <kdudka@redhat.com>
+---
+ doc/find.texi | 11 ++---------
+ find/find.1   | 17 ++++++++++++-----
+ find/parser.c | 10 ++++++++--
+ 3 files changed, 22 insertions(+), 16 deletions(-)
+
+diff --git a/doc/find.texi b/doc/find.texi
+index a44e5d5..1ad3af5 100644
+--- a/doc/find.texi
++++ b/doc/find.texi
+@@ -1180,11 +1180,8 @@ optionally prefixed by @samp{-} or @samp{/}.
+ 
+ A @var{pmode} that starts with neither @samp{-} nor @samp{/} matches
+ if @var{mode} exactly matches the file mode bits.
+-
+-A @var{pmode} that starts with @samp{+} but which is not valid (for
+-example @samp{+a+x}) is an error if the POSIXLY_CORRECT environment
+-variable it set.  Otherwise this is treated as if the initial
+-@samp{+} were a @samp{/}, for backward compatibility.
++(To avoid confusion with an obsolete GNU extension, @var{mode}
++must not start with a @samp{+} immediately followed by an octal digit.)
+ 
+ A @var{pmode} that starts with @samp{-} matches if
+ @emph{all} the file mode bits set in @var{mode} are set for the file;
+@@ -3944,10 +3941,6 @@ Setting this variable also turns off warning messages (that is, implies
+ the output for @samp{-ok}, all messages printed on stderr are
+ diagnostics and must result in a non-zero exit status.
+ 
+-Arguments to @samp{-perm} beginning with @samp{+} are treated
+-differently when POSIXLY_CORRECT is set. See
+-@ref{Mode Bits,-perm,File Mode Bits}.
+-
+ When POSIXLY_CORRECT is set, the response to the prompt made by the
+ @code{-ok} action is interpreted according to the system's message
+ catalogue, as opposed to according to @code{find}'s own message
+diff --git a/find/find.1 b/find/find.1
+index 34a4cba..00e45e6 100644
+--- a/find/find.1
++++ b/find/find.1
+@@ -2046,11 +2046,6 @@ As of findutils-4.2.2, shell metacharacters (`*', `?' or `[]' for
+ example) used in filename patterns will match a leading `.', because
+ IEEE POSIX interpretation 126 requires this.
+ .P
+-The syntax
+-\.B \-perm +MODE
+-was deprecated in findutils-4.2.21, in favour of
+-\.B \-perm
+-.BR /MODE .
+ As of findutils-4.3.3,
+ .B \-perm /000
+ now matches all files instead of none.
+@@ -2098,6 +2093,18 @@ Feature	Added in	Also occurs in
+ \-ipath	3.8
+ \-iregex	3.8
+ .TE
++.P
++The syntax
++\.B \-perm +MODE
++does not work as expected in findutils-4.5.11 and it
++was removed in findutils-4.5.12, in favour of
++\.B \-perm
++.BR /MODE .
++The
++.B +MODE
++syntax had been deprecated since findutils-4.2.21
++which was released in 2005.
++.P
+ .SH "NON-BUGS"
+ .nf
+ .B $ find . \-name *.c \-print
+diff --git a/find/parser.c b/find/parser.c
+index d15c0e0..e5f02b3 100644
+--- a/find/parser.c
++++ b/find/parser.c
+@@ -1239,7 +1239,7 @@ tests (N can be +N or -N or N): -amin N -anewer FILE -atime N -cmin N\n\
+       -ilname PATTERN -iname PATTERN -inum N -iwholename PATTERN -iregex PATTERN\n\
+       -links N -lname PATTERN -mmin N -mtime N -name PATTERN -newer FILE"));
+   puts (_("\
+-      -nouser -nogroup -path PATTERN -perm [+-]MODE -regex PATTERN\n\
++      -nouser -nogroup -path PATTERN -perm [-/]MODE -regex PATTERN\n\
+       -readable -writable -executable\n\
+       -wholename PATTERN -size N[bcwkMG] -true -type [bcdpflsD] -uid N\n\
+       -used N -user NAME -xtype [bcdpfls]"));
+@@ -1981,6 +1981,13 @@ parse_perm (const struct parser_table* entry, char **argv, int *arg_ptr)
+       break;
+ 
+      case '+':
++       if ('0' <= perm_expr[1] && perm_expr[1] < '8')
++	 /* warn about using obsolete syntax (with unexpected behavior) */
++	 error(0, 0, "warning: you are using `-perm +MODE'.  The "
++	     "interpretation of `-perm +omode' changed in findutils-4.5.11.  "
++	     "The syntax `-perm +omode' was removed in findutils-4.5.12, in "
++	     "favour of `-perm /omode'.");
++
+        change = mode_compile (perm_expr);
+        if (NULL == change)
+ 	 {
+@@ -2011,7 +2018,6 @@ parse_perm (const struct parser_table* entry, char **argv, int *arg_ptr)
+        break;
+ 
+     case '/':			/* GNU extension */
+-      non_posix_mode (perm_expr);
+       mode_start = 1;
+       kind = PERM_ANY;
+       havekind = true;
+-- 
+1.9.3
+
