@@ -1,7 +1,7 @@
 Summary: The GNU versions of find utilities (find and xargs)
 Name: findutils
 Version: 4.5.11
-Release: 1%{?dist}
+Release: 3%{?dist}
 Epoch: 1
 License: GPLv3+
 Group: Applications/File
@@ -99,6 +99,12 @@ fi
 %{_infodir}/find-maint.info.gz
 
 %changelog
+* Fri Jan 24 2014 Daniel Mach <dmach@redhat.com> - 1:4.5.11-3
+- Mass rebuild 2014-01-24
+
+* Fri Dec 27 2013 Daniel Mach <dmach@redhat.com> - 1:4.5.11-2
+- Mass rebuild 2013-12-27
+
 * Sun Feb 03 2013 Kamil Dudka <kdudka@redhat.com> - 1:4.5.11-1
 - new upstream release
 
